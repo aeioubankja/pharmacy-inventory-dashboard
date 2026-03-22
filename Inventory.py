@@ -27,9 +27,9 @@ header_col1, header_col2, header_col3 = st.columns([0.6, 2.5, 2.2])
 
 with header_col1:
     try:
-        st.image("logo.jpg", width=90)
+        st.image("Logo.jpg", width=90)
     except:
-        st.error("logo.jpg not found")
+        st.error("Logo.jpg not found")
 
 with header_col2:
     st.markdown("""
