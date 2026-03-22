@@ -54,7 +54,7 @@ st.markdown('<hr style="border: 0; border-top: 1px solid #444; margin-bottom: 30
 # 3. Data Connection & Processing
 conn = st.connection("gsheets", type=GSheetsConnection)
 url = "https://docs.google.com/spreadsheets/d/1ZPIcCKwGu_7LF0Bka63j9s_E78fEM6A5hnzkVW2N9ag/edit#gid=883636641"
-df_raw = conn.read(spreadsheet=url, ttl=0)
+df_raw = conn.read(ttl=0)
 
 # Map columns from the Google Sheet
 df = df_raw.iloc[:, 2:9].copy()
