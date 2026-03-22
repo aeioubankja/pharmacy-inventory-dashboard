@@ -128,7 +128,7 @@ if show_analytics:
         
     with r2c2:
         st.subheader("Announcement Frequency")
-        order = ["ยังไม่ประกาศ", "ไม่เกิน 1 เดือน", "ไม่เกิน 2 เดือน", "ไม่เกิน 3 เดือน"]
+        order = ["ยังไม่มีประกาศ", "ไม่เกิน 1 เดือน", "ไม่เกิน 2 เดือน", "ไม่เกิน 3 เดือน"]
         df_filtered['Announcement'] = pd.Categorical(df_filtered['Announcement'], categories=order, ordered=True)
         ann_counts = df_filtered['Announcement'].value_counts().reindex(order).reset_index()
         fig_ann = px.bar(ann_counts, x='Announcement', y='count', color='Announcement')
