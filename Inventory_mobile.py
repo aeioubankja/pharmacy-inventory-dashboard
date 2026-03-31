@@ -32,7 +32,11 @@ st.markdown("""
 # 2. Header Section
 header_col1, header_col2 = st.columns([1, 6])
 with header_col1:
-    st.image("Logo.jpg", use_container_width=True)
+    # Note: Ensure Logo.jpg is in the same directory
+    try:
+        st.image("Logo.jpg", use_container_width=True)
+    except:
+        st.write("Logo Placeholder")
 
 with header_col2:
     st.markdown(f"""
@@ -46,25 +50,34 @@ with header_col2:
 
 st.divider()
 
-# 3. Data Connection (Restored URL to fix Table/Sidebar disappearance)
+# 3. Data Connection & Processing
 conn = st.connection("gsheets", type=GSheetsConnection)
 url = "https://docs.google.com/spreadsheets/d/1ZPIcCKwGu_7LF0Bka63j9s_E78fEM6A5hnzkVW2N9ag/edit#gid=883636641"
 df_raw = conn.read(spreadsheet=url, ttl=0)
 
-df = df_raw.iloc[:, 2:9].copy()
-df.columns = ["Pharmacist_name", "Hospital", "Inventory_Value", "Avg_Usage", "Remaining_Budget", "Announcement", "Port_Status"]
+# Slicing Logic: 
+# Hospital is Col D (idx 3)
+# Current Data: Col E:G (idx 4, 5, 6)
+# Previous Data: Col M:O (idx 12, 13, 14)
+# Port Status remains Col I (idx 8)
+df = df_raw.iloc[:, [3, 4, 5, 6, 8, 12, 13, 14]].copy()
+df.columns = [
+    "Hospital", "Inventory_Value", "Avg_Usage", "Remaining_Budget", 
+    "Port_Status", "Prev_Inventory", "Prev_Avg_Usage", "Prev_Budget"
+]
 
-for col in ["Inventory_Value", "Avg_Usage", "Remaining_Budget"]:
-    # 1. Convert to string to ensure .str methods work
-    # 2. Replace ',' with ''
-    # 3. Convert to numeric
+# Numeric Cleaning
+numeric_cols = ["Inventory_Value", "Avg_Usage", "Remaining_Budget", "Prev_Inventory", "Prev_Avg_Usage", "Prev_Budget"]
+for col in numeric_cols:
     df[col] = df[col].astype(str).str.replace(',', '')
     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-df['Months_of_Stock'] = (df['Inventory_Value'] / df['Avg_Usage']).fillna(0).round(2)
-df['Total_Support_Months'] = ((df['Remaining_Budget'] + df['Inventory_Value']) / df['Avg_Usage']).fillna(0).round(2)
+# Calculate Months of Stock
+df['Months_of_Stock'] = (df['Inventory_Value'] / df['Avg_Usage']).replace([float('inf'), -float('inf')], 0).fillna(0).round(2)
+df['Prev_Months_of_Stock'] = (df['Prev_Inventory'] / df['Prev_Avg_Usage']).replace([float('inf'), -float('inf')], 0).fillna(0).round(2)
+df['Total_Support_Months'] = ((df['Remaining_Budget'] + df['Inventory_Value']) / df['Avg_Usage']).replace([float('inf'), -float('inf')], 0).fillna(0).round(2)
 
-# 4. Sidebar Navigation (Restored Options)
+# 4. Sidebar Navigation
 st.sidebar.header("Strategic Navigation")
 show_analytics = st.sidebar.checkbox("Show Analytics Charts", value=True)
 show_table = st.sidebar.checkbox("Show Detailed Table", value=True)
@@ -87,38 +100,54 @@ m4.metric("Avg. Monthly Stock", f"{df_filtered['Months_of_Stock'].mean():.2f} Mo
 
 st.divider()
 
-# 6. FIXED CHART LAYOUT
+# 6. Analytics Section
 if show_analytics:
-    # ROW 1: Months of Stock (L) | Announcement Frequency (R)
     r1c1, r1c2 = st.columns(2)
+    
     with r1c1:
-        st.subheader("Months of Stock")
-        fig1 = px.bar(df_filtered.sort_values('Months_of_Stock'), x='Months_of_Stock', y='Hospital', 
-                         orientation='h', color='Months_of_Stock', range_color=[0, 3], 
-                         color_continuous_scale=['#FF4B4B', '#00CC96'])
-        fig1.update_layout(dragmode=False, margin=dict(l=0,r=0,t=30,b=0), height=400)
+        st.subheader("Current Months of Stock")
+        fig1 = px.bar(df_filtered.sort_values('Months_of_Stock'), 
+                     x='Months_of_Stock', y='Hospital', 
+                     orientation='h', color='Months_of_Stock', range_color=[0, 3], 
+                     color_continuous_scale=['#FF4B4B', '#00CC96'])
+        fig1.update_layout(dragmode=False, margin=dict(l=0,r=0,t=30,b=0), height=450)
         st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': False})
 
     with r1c2:
-        st.subheader("Announcement Frequency")
-        order = ["ยังไม่มีประกาศ", "ไม่เกิน 1 เดือน", "ไม่เกิน 2 เดือน", "ไม่เกิน 3 เดือน"]
-        df_filtered['Announcement'] = pd.Categorical(df_filtered['Announcement'], categories=order, ordered=True)
-        ann_counts = df_filtered['Announcement'].value_counts().reindex(order).reset_index()
-        fig2 = px.bar(ann_counts, x='Announcement', y='count', color='Announcement')
-        fig2.update_layout(dragmode=False, showlegend=False, margin=dict(l=0,r=0,t=30,b=0), height=400)
+        st.subheader("Previous Month of Stock Distribution")
+        # Define ranges for the frequency chart
+        bins = [0, 1, 2, 3, 100]
+        bin_labels = ["Under 1 Month", "1-2 Months", "2-3 Months", "Over 3 Months"]
+        df_filtered['Prev_Stock_Range'] = pd.cut(df_filtered['Prev_Months_of_Stock'], bins=bins, labels=bin_labels)
+        
+        # Count frequency
+        ann_counts = df_filtered['Prev_Stock_Range'].value_counts().reindex(bin_labels).reset_index()
+        ann_counts.columns = ['Range', 'count']
+        
+        # Map specific colors (Red for low stock, Blue/Green for high)
+        color_map = {"Under 1 Month": "#FF4B4B", "1-2 Months": "#FFA15A", "2-3 Months": "#19D3F3", "Over 3 Months": "#00CC96"}
+        
+        fig2 = px.bar(ann_counts, x='Range', y='count', color='Range', color_discrete_map=color_map)
+        fig2.update_layout(dragmode=False, showlegend=False, margin=dict(l=0,r=0,t=30,b=0), height=450)
         st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': False})
 
-    # ROW 2: Heatmap (L) | Below 7m Target (R)
+    # ROW 2: Heatmap and Alerts
+    st.divider()
     r2c1, r2c2 = st.columns(2)
     with r2c1:
         st.subheader("Budget Support Heatmap")
         df_heat = df_filtered.sort_values('Hospital')
         vals, names = df_heat['Total_Support_Months'].tolist(), df_heat['Hospital'].tolist()
+        # Adjust grid sizing based on number of hospitals
         grid_v = [vals[i:i + 4] for i in range(0, len(vals), 4)]
         grid_n = [names[i:i + 4] for i in range(0, len(names), 4)]
+        
         fig3 = go.Figure(data=go.Heatmap(
-            z=grid_v, text=[[f"{n}: {v} Mo" for n, v in zip(rn, rv)] for rn, rv in zip(grid_n, grid_v)],
-            hoverinfo="text", colorscale=[[0, '#FF4B4B'], [0.8, '#FFFF00'], [1, '#00CC96']], zmin=0, zmax=7
+            z=grid_v, 
+            text=[[f"{n}: {v} Mo" for n, v in zip(rn, rv)] for rn, rv in zip(grid_n, grid_v)],
+            hoverinfo="text", 
+            colorscale=[[0, '#FF4B4B'], [0.8, '#FFFF00'], [1, '#00CC96']], 
+            zmin=0, zmax=7
         ))
         fig3.update_layout(dragmode=False, height=350, xaxis={'showticklabels':False}, yaxis={'showticklabels':False})
         st.plotly_chart(fig3, use_container_width=True, config={'displayModeBar': False})
@@ -132,23 +161,13 @@ if show_analytics:
         else:
             st.success("All institutes meet target.")
 
-    # ROW 3: Top 10 Trade (L) | Top 10 Generic (R)
+    # ROW 3: Port Status
     st.divider()
-    r3c1, r3c2 = st.columns(2)
-    with r3c1:
-        st.subheader("Top 10 Trade Name")
-        st.info("Awaiting Database Connection...")
-    with r3c2:
-        st.subheader("Top 10 Generic Name")
-        st.info("Awaiting Database Connection...")
-
-    # ROW 4: Port Status (Centered Below Top 10)
     st.markdown("<h3 style='text-align: center;'>Port Status Distribution</h3>", unsafe_allow_html=True)
     _, mid_col, _ = st.columns([1, 2, 1])
     with mid_col:
         df_filtered['Clean_Status'] = df_filtered['Port_Status'].apply(lambda x: "ส่งออกได้แบบมีเงื่อนไข" if "เงื่อนไข" in str(x) else x)
         fig_pie = px.pie(df_filtered, names='Clean_Status', hole=0.4)
-        # Fixed centered legend and layout
         fig_pie.update_layout(
             dragmode=False, 
             legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), 
@@ -157,8 +176,10 @@ if show_analytics:
         )
         st.plotly_chart(fig_pie, use_container_width=True, config={'displayModeBar': False})
 
-# 7. Restored Data Table
+# 7. Data Table
 if show_table:
     st.divider()
     st.subheader("Detailed Data View")
-    st.dataframe(df_filtered, use_container_width=True, hide_index=True)
+    # Showing the main calculation columns for clarity
+    display_cols = ["Hospital", "Inventory_Value", "Avg_Usage", "Months_of_Stock", "Prev_Months_of_Stock", "Total_Support_Months", "Port_Status"]
+    st.dataframe(df_filtered[display_cols], use_container_width=True, hide_index=True)
