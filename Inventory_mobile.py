@@ -102,33 +102,40 @@ st.divider()
 
 # 6. Analytics Section
 if show_analytics:
+    # Use the same layout with two columns
     r1c1, r1c2 = st.columns(2)
     
     with r1c1:
         st.subheader("Current Months of Stock")
-        fig1 = px.bar(df_filtered.sort_values('Months_of_Stock'), 
-                     x='Months_of_Stock', y='Hospital', 
-                     orientation='h', color='Months_of_Stock', range_color=[0, 3], 
-                     color_continuous_scale=['#FF4B4B', '#00CC96'])
+        # Current Month Plot
+        fig1 = px.bar(
+            df_filtered.sort_values('Months_of_Stock'), 
+            x='Months_of_Stock', 
+            y='Hospital', 
+            orientation='h', 
+            color='Months_of_Stock', 
+            range_color=[0, 3], 
+            color_continuous_scale=['#FF4B4B', '#00CC96'],
+            labels={'Months_of_Stock': 'Mo'}
+        )
         fig1.update_layout(dragmode=False, margin=dict(l=0,r=0,t=30,b=0), height=450)
         st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': False})
 
     with r1c2:
-        st.subheader("Previous Month of Stock Distribution")
-        # Define ranges for the frequency chart
-        bins = [0, 1, 2, 3, 100]
-        bin_labels = ["Under 1 Month", "1-2 Months", "2-3 Months", "Over 3 Months"]
-        df_filtered['Prev_Stock_Range'] = pd.cut(df_filtered['Prev_Months_of_Stock'], bins=bins, labels=bin_labels)
-        
-        # Count frequency
-        ann_counts = df_filtered['Prev_Stock_Range'].value_counts().reindex(bin_labels).reset_index()
-        ann_counts.columns = ['Range', 'count']
-        
-        # Map specific colors (Red for low stock, Blue/Green for high)
-        color_map = {"Under 1 Month": "#FF4B4B", "1-2 Months": "#FFA15A", "2-3 Months": "#19D3F3", "Over 3 Months": "#00CC96"}
-        
-        fig2 = px.bar(ann_counts, x='Range', y='count', color='Range', color_discrete_map=color_map)
-        fig2.update_layout(dragmode=False, showlegend=False, margin=dict(l=0,r=0,t=30,b=0), height=450)
+        st.subheader("Previous Month of Stock")
+        # UPDATED: Previous Month Plot now mirrors the Current Month format
+        fig2 = px.bar(
+            df_filtered.sort_values('Prev_Months_of_Stock'), 
+            x='Prev_Months_of_Stock', 
+            y='Hospital', 
+            orientation='h', 
+            color='Prev_Months_of_Stock', 
+            range_color=[0, 3], 
+            color_continuous_scale=['#FF4B4B', '#00CC96'], # Same color scale
+            labels={'Prev_Months_of_Stock': 'Mo'}
+        )
+        # Ensure the y-axis (Hospital names) matches the layout of the first chart
+        fig2.update_layout(dragmode=False, margin=dict(l=0,r=0,t=30,b=0), height=450)
         st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': False})
 
     # ROW 2: Heatmap and Alerts
