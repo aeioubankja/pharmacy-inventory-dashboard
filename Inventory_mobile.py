@@ -191,8 +191,8 @@ if show_analytics:
         st.plotly_chart(fig3, use_container_width=True, config={'displayModeBar': False})
         
     with r3c2:
-        st.subheader("⚠️ Below 7-Month Target")
-        at_risk = df_filtered[df_filtered['Total_Support_Months'] < 7].sort_values('Total_Support_Months')
+        st.subheader("⚠️ Below 6-Month Target")
+        at_risk = df_filtered[df_filtered['Total_Support_Months'] < 6].sort_values('Total_Support_Months')
         if not at_risk.empty:
             for _, row in at_risk.iterrows():
                 st.markdown(f"- <span class='risk-text'>{row['Hospital']}</span>: **{row['Total_Support_Months']}** mo", unsafe_allow_html=True)
