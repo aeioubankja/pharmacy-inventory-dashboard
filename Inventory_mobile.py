@@ -106,7 +106,8 @@ if show_analytics:
     r1c1, r1c2 = st.columns(2)
     
     with r1c1:
-        st.subheader("Current Months of Stock")
+        # Styled Header for Current
+        st.markdown('### <span style="color:#FFFF99">**Current**</span> Month of Stock', unsafe_allow_html=True)
         fig1 = px.bar(
             df_filtered.sort_values('Months_of_Stock'), 
             x='Months_of_Stock', 
@@ -117,11 +118,12 @@ if show_analytics:
             color_continuous_scale=['#FF4B4B', '#00CC96'],
             labels={'Months_of_Stock': 'Mo'}
         )
-        fig1.update_layout(dragmode=False, margin=dict(l=0,r=0,t=30,b=0), height=450)
+        fig1.update_layout(dragmode=False, margin=dict(l=0,r=0,t=10,b=0), height=450)
         st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': False})
 
     with r1c2:
-        st.subheader("Previous Month of Stock")
+        # Styled Header for Previous
+        st.markdown('### <span style="color:#FFFF99">**Previous**</span> Month of Stock', unsafe_allow_html=True)
         fig2 = px.bar(
             df_filtered.sort_values('Prev_Months_of_Stock'), 
             x='Prev_Months_of_Stock', 
@@ -132,13 +134,13 @@ if show_analytics:
             color_continuous_scale=['#FF4B4B', '#00CC96'],
             labels={'Prev_Months_of_Stock': 'Mo'}
         )
-        fig2.update_layout(dragmode=False, margin=dict(l=0,r=0,t=30,b=0), height=450)
+        fig2.update_layout(dragmode=False, margin=dict(l=0,r=0,t=10,b=0), height=450)
         st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': False})
 
     st.divider()
 
-    # --- ROW 2: Vertical Comparison Chart (Center) ---
-    st.subheader("Comparison: Current vs Previous Month of Stock")
+    # --- ROW 2: Vertical Comparison Chart ---
+    st.markdown('### Comparison: <span style="color:#FFFF99">**Current**</span> vs <span style="color:#FFFF99">**Previous**</span> Month of Stock', unsafe_allow_html=True)
     
     df_compare = df_filtered[['Hospital', 'Months_of_Stock', 'Prev_Months_of_Stock']].copy()
     df_compare = df_compare.rename(columns={
