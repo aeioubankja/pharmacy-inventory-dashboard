@@ -32,7 +32,6 @@ st.markdown("""
 # 2. Header Section
 header_col1, header_col2 = st.columns([1, 6])
 with header_col1:
-    # Note: Ensure Logo.jpg is in the same directory
     try:
         st.image("Logo.jpg", use_container_width=True)
     except:
@@ -55,12 +54,12 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 url = "https://docs.google.com/spreadsheets/d/1ZPIcCKwGu_7LF0Bka63j9s_E78fEM6A5hnzkVW2N9ag/edit#gid=883636641"
 df_raw = conn.read(spreadsheet=url, ttl=0)
 
-# Slicing Logic: 
-# Hospital is Col D (idx 3)
+# Updated Slicing Logic:
+# Column P (Alias Hospital Name) is idx 15
 # Current Data: Col E:G (idx 4, 5, 6)
+# Port Status: Col I (idx 8)
 # Previous Data: Col M:O (idx 12, 13, 14)
-# Port Status remains Col I (idx 8)
-df = df_raw.iloc[:, [3, 4, 5, 6, 8, 12, 13, 14]].copy()
+df = df_raw.iloc[:, [15, 4, 5, 6, 8, 12, 13, 14]].copy()
 df.columns = [
     "Hospital", "Inventory_Value", "Avg_Usage", "Remaining_Budget", 
     "Port_Status", "Prev_Inventory", "Prev_Avg_Usage", "Prev_Budget"
@@ -85,6 +84,7 @@ st.sidebar.divider()
 st.sidebar.subheader("Select Institutes")
 
 selected_hospitals = []
+# Sort by the new Hospital alias names
 for hosp in sorted(df['Hospital'].unique()):
     if st.sidebar.checkbox(hosp, value=True, key=f"f_{hosp}"):
         selected_hospitals.append(hosp)
@@ -140,7 +140,6 @@ if show_analytics:
     # --- ROW 2: Vertical Comparison Chart (Center) ---
     st.subheader("Comparison: Current vs Previous Month of Stock")
     
-    # Transform data to long format for the comparison chart
     df_compare = df_filtered[['Hospital', 'Months_of_Stock', 'Prev_Months_of_Stock']].copy()
     df_compare = df_compare.rename(columns={
         'Months_of_Stock': 'Current Month',
@@ -148,7 +147,6 @@ if show_analytics:
     })
     df_melted = df_compare.melt(id_vars='Hospital', var_name='Period', value_name='Mo')
 
-    # Vertical bar chart (orientation='v' is default)
     fig_comp = px.bar(
         df_melted,
         x='Hospital',
@@ -156,8 +154,8 @@ if show_analytics:
         color='Period',
         barmode='group',
         color_discrete_map={
-            'Current Month': '#00CC96',  # Green
-            'Previous Month': '#636EFA'  # Blue
+            'Current Month': '#00CC96',
+            'Previous Month': '#636EFA'
         },
         height=500
     )
@@ -165,7 +163,7 @@ if show_analytics:
     fig_comp.update_layout(
         dragmode=False,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        xaxis={'categoryorder':'total descending'} # Keeps it organized
+        xaxis={'categoryorder':'total descending'}
     )
     st.plotly_chart(fig_comp, use_container_width=True, config={'displayModeBar': False})
 
@@ -203,6 +201,5 @@ if show_analytics:
 if show_table:
     st.divider()
     st.subheader("Detailed Data View")
-    # Showing the main calculation columns for clarity
     display_cols = ["Hospital", "Inventory_Value", "Avg_Usage", "Months_of_Stock", "Prev_Months_of_Stock", "Total_Support_Months", "Port_Status"]
     st.dataframe(df_filtered[display_cols], use_container_width=True, hide_index=True)
