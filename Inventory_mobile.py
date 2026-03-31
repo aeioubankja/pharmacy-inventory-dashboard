@@ -55,6 +55,10 @@ df = df_raw.iloc[:, 2:9].copy()
 df.columns = ["Pharmacist_name", "Hospital", "Inventory_Value", "Avg_Usage", "Remaining_Budget", "Announcement", "Port_Status"]
 
 for col in ["Inventory_Value", "Avg_Usage", "Remaining_Budget"]:
+    # 1. Convert to string to ensure .str methods work
+    # 2. Replace ',' with ''
+    # 3. Convert to numeric
+    df[col] = df[col].astype(str).str.replace(',', '')
     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
 df['Months_of_Stock'] = (df['Inventory_Value'] / df['Avg_Usage']).fillna(0).round(2)
