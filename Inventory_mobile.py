@@ -102,50 +102,64 @@ st.divider()
 
 # 6. Analytics Section
 if show_analytics:
-    # Use the same layout with two columns
-    r1c1, r1c2 = st.columns(2)
-    
-    with r1c1:
-        st.subheader("Current Months of Stock")
-        # Current Month Plot
-        fig1 = px.bar(
-            df_filtered.sort_values('Months_of_Stock'), 
-            x='Months_of_Stock', 
-            y='Hospital', 
-            orientation='h', 
-            color='Months_of_Stock', 
-            range_color=[0, 3], 
-            color_continuous_scale=['#FF4B4B', '#00CC96'],
-            labels={'Months_of_Stock': 'Mo'}
+    # --- NEW: Port Status Distribution (Moved up) ---
+    st.markdown("<h3 style='text-align: center;'>Port Status Distribution</h3>", unsafe_allow_html=True)
+    _, mid_col, _ = st.columns([1, 2, 1])
+    with mid_col:
+        df_filtered['Clean_Status'] = df_filtered['Port_Status'].apply(lambda x: "ส่งออกได้แบบมีเงื่อนไข" if "เงื่อนไข" in str(x) else x)
+        fig_pie = px.pie(df_filtered, names='Clean_Status', hole=0.4)
+        fig_pie.update_layout(
+            dragmode=False, 
+            legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), 
+            height=400,
+            margin=dict(t=20, b=100, l=0, r=0)
         )
-        fig1.update_layout(dragmode=False, margin=dict(l=0,r=0,t=30,b=0), height=450)
-        st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': False})
+        st.plotly_chart(fig_pie, use_container_width=True, config={'displayModeBar': False})
 
-    with r1c2:
-        st.subheader("Previous Month of Stock")
-        # UPDATED: Previous Month Plot now mirrors the Current Month format
-        fig2 = px.bar(
-            df_filtered.sort_values('Prev_Months_of_Stock'), 
-            x='Prev_Months_of_Stock', 
-            y='Hospital', 
-            orientation='h', 
-            color='Prev_Months_of_Stock', 
-            range_color=[0, 3], 
-            color_continuous_scale=['#FF4B4B', '#00CC96'], # Same color scale
-            labels={'Prev_Months_of_Stock': 'Mo'}
-        )
-        # Ensure the y-axis (Hospital names) matches the layout of the first chart
-        fig2.update_layout(dragmode=False, margin=dict(l=0,r=0,t=30,b=0), height=450)
-        st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': False})
-
-    # ROW 2: Heatmap and Alerts
     st.divider()
+
+    # --- UPDATED: Month of Stock Comparison Graph ---
+    st.subheader("Comparison: Current vs Previous Month of Stock")
+    
+    # Prepare data for grouped bar chart
+    # We melt the dataframe to have a 'Month' type column for the legend
+    df_compare = df_filtered[['Hospital', 'Months_of_Stock', 'Prev_Months_of_Stock']].copy()
+    df_compare = df_compare.rename(columns={
+        'Months_of_Stock': 'Current Month',
+        'Prev_Months_of_Stock': 'Previous Month'
+    })
+    
+    df_melted = df_compare.melt(id_vars='Hospital', var_name='Period', value_name='Mo')
+
+    fig_compare = px.bar(
+        df_melted,
+        x='Mo',
+        y='Hospital',
+        color='Period',
+        barmode='group',
+        orientation='h',
+        color_discrete_map={
+            'Current Month': '#00CC96',  # Green
+            'Previous Month': '#636EFA'  # Blue-ish
+        },
+        height=600  # Increased height to accommodate grouped bars
+    )
+    
+    fig_compare.update_layout(
+        dragmode=False,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=0, r=0, t=30, b=0)
+    )
+    st.plotly_chart(fig_compare, use_container_width=True, config={'displayModeBar': False})
+
+    st.divider()
+
+    # --- Budget Support Heatmap and Below 7-Month Target ---
     r2c1, r2c2 = st.columns(2)
     with r2c1:
         st.subheader("Budget Support Heatmap")
         df_heat = df_filtered.sort_values('Hospital')
         vals, names = df_heat['Total_Support_Months'].tolist(), df_heat['Hospital'].tolist()
-        # Adjust grid sizing based on number of hospitals
         grid_v = [vals[i:i + 4] for i in range(0, len(vals), 4)]
         grid_n = [names[i:i + 4] for i in range(0, len(names), 4)]
         
@@ -167,21 +181,6 @@ if show_analytics:
                 st.markdown(f"- <span class='risk-text'>{row['Hospital']}</span>: **{row['Total_Support_Months']}** mo", unsafe_allow_html=True)
         else:
             st.success("All institutes meet target.")
-
-    # ROW 3: Port Status
-    st.divider()
-    st.markdown("<h3 style='text-align: center;'>Port Status Distribution</h3>", unsafe_allow_html=True)
-    _, mid_col, _ = st.columns([1, 2, 1])
-    with mid_col:
-        df_filtered['Clean_Status'] = df_filtered['Port_Status'].apply(lambda x: "ส่งออกได้แบบมีเงื่อนไข" if "เงื่อนไข" in str(x) else x)
-        fig_pie = px.pie(df_filtered, names='Clean_Status', hole=0.4)
-        fig_pie.update_layout(
-            dragmode=False, 
-            legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), 
-            height=450,
-            margin=dict(t=20, b=100, l=0, r=0)
-        )
-        st.plotly_chart(fig_pie, use_container_width=True, config={'displayModeBar': False})
 
 # 7. Data Table
 if show_table:
