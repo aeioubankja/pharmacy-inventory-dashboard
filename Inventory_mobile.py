@@ -102,61 +102,78 @@ st.divider()
 
 # 6. Analytics Section
 if show_analytics:
-    # --- NEW: Port Status Distribution (Moved up) ---
-    st.markdown("<h3 style='text-align: center;'>Port Status Distribution</h3>", unsafe_allow_html=True)
-    _, mid_col, _ = st.columns([1, 2, 1])
-    with mid_col:
-        df_filtered['Clean_Status'] = df_filtered['Port_Status'].apply(lambda x: "ส่งออกได้แบบมีเงื่อนไข" if "เงื่อนไข" in str(x) else x)
-        fig_pie = px.pie(df_filtered, names='Clean_Status', hole=0.4)
-        fig_pie.update_layout(
-            dragmode=False, 
-            legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), 
-            height=400,
-            margin=dict(t=20, b=100, l=0, r=0)
+    # --- ROW 1: Current vs Previous Individual Charts ---
+    r1c1, r1c2 = st.columns(2)
+    
+    with r1c1:
+        st.subheader("Current Months of Stock")
+        fig1 = px.bar(
+            df_filtered.sort_values('Months_of_Stock'), 
+            x='Months_of_Stock', 
+            y='Hospital', 
+            orientation='h', 
+            color='Months_of_Stock', 
+            range_color=[0, 3], 
+            color_continuous_scale=['#FF4B4B', '#00CC96'],
+            labels={'Months_of_Stock': 'Mo'}
         )
-        st.plotly_chart(fig_pie, use_container_width=True, config={'displayModeBar': False})
+        fig1.update_layout(dragmode=False, margin=dict(l=0,r=0,t=30,b=0), height=450)
+        st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': False})
+
+    with r1c2:
+        st.subheader("Previous Month of Stock")
+        fig2 = px.bar(
+            df_filtered.sort_values('Prev_Months_of_Stock'), 
+            x='Prev_Months_of_Stock', 
+            y='Hospital', 
+            orientation='h', 
+            color='Prev_Months_of_Stock', 
+            range_color=[0, 3], 
+            color_continuous_scale=['#FF4B4B', '#00CC96'],
+            labels={'Prev_Months_of_Stock': 'Mo'}
+        )
+        fig2.update_layout(dragmode=False, margin=dict(l=0,r=0,t=30,b=0), height=450)
+        st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': False})
 
     st.divider()
 
-    # --- UPDATED: Month of Stock Comparison Graph ---
+    # --- ROW 2: Vertical Comparison Chart (Center) ---
     st.subheader("Comparison: Current vs Previous Month of Stock")
     
-    # Prepare data for grouped bar chart
-    # We melt the dataframe to have a 'Month' type column for the legend
+    # Transform data to long format for the comparison chart
     df_compare = df_filtered[['Hospital', 'Months_of_Stock', 'Prev_Months_of_Stock']].copy()
     df_compare = df_compare.rename(columns={
         'Months_of_Stock': 'Current Month',
         'Prev_Months_of_Stock': 'Previous Month'
     })
-    
     df_melted = df_compare.melt(id_vars='Hospital', var_name='Period', value_name='Mo')
 
-    fig_compare = px.bar(
+    # Vertical bar chart (orientation='v' is default)
+    fig_comp = px.bar(
         df_melted,
-        x='Mo',
-        y='Hospital',
+        x='Hospital',
+        y='Mo',
         color='Period',
         barmode='group',
-        orientation='h',
         color_discrete_map={
             'Current Month': '#00CC96',  # Green
-            'Previous Month': '#636EFA'  # Blue-ish
+            'Previous Month': '#636EFA'  # Blue
         },
-        height=600  # Increased height to accommodate grouped bars
+        height=500
     )
     
-    fig_compare.update_layout(
+    fig_comp.update_layout(
         dragmode=False,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=0, r=0, t=30, b=0)
+        xaxis={'categoryorder':'total descending'} # Keeps it organized
     )
-    st.plotly_chart(fig_compare, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig_comp, use_container_width=True, config={'displayModeBar': False})
 
     st.divider()
 
-    # --- Budget Support Heatmap and Below 7-Month Target ---
-    r2c1, r2c2 = st.columns(2)
-    with r2c1:
+    # --- ROW 3: Heatmap and Alerts ---
+    r3c1, r3c2 = st.columns(2)
+    with r3c1:
         st.subheader("Budget Support Heatmap")
         df_heat = df_filtered.sort_values('Hospital')
         vals, names = df_heat['Total_Support_Months'].tolist(), df_heat['Hospital'].tolist()
@@ -173,7 +190,7 @@ if show_analytics:
         fig3.update_layout(dragmode=False, height=350, xaxis={'showticklabels':False}, yaxis={'showticklabels':False})
         st.plotly_chart(fig3, use_container_width=True, config={'displayModeBar': False})
         
-    with r2c2:
+    with r3c2:
         st.subheader("⚠️ Below 7-Month Target")
         at_risk = df_filtered[df_filtered['Total_Support_Months'] < 7].sort_values('Total_Support_Months')
         if not at_risk.empty:
