@@ -113,38 +113,41 @@ if show_analytics:
 
     st.divider()
 
-    # --- ROW 2: Comparison (Purple on Left, Green on Right) ---
+# --- ROW 2: Comparison (Purple on Left, Green on Right) ---
     st.markdown('### Comparison: <span style="color:#FFFF99">**Previous**</span> vs <span style="color:#FFFF99">**Current**</span> Month of Stock', unsafe_allow_html=True)
     
-    # Force categorical order: Previous first (Purple), Current second (Green)
-    df_melted = df_filtered[['Hospital', 'Months_of_Stock', 'Prev_Months_of_Stock']].melt(id_vars='Hospital', var_name='Period', value_name='Mo')
-    df_melted['Period'] = pd.Categorical(df_melted['Period'], categories=['Prev_Months_of_Stock', 'Months_of_Stock'], ordered=True)
+    # Prepare data for melting
+    df_compare = df_filtered[['Hospital', 'Months_of_Stock', 'Prev_Months_of_Stock']].copy()
+    df_compare = df_compare.rename(columns={
+        'Months_of_Stock': 'Current_Month_of_Stock',
+        'Prev_Months_of_Stock': 'Previous_Month_of_Stock'
+    })
+    
+    df_melted = df_compare.melt(id_vars='Hospital', var_name='Period', value_name='Mo')
+    
+    # Set categorical order to ensure Previous (Purple) is on the left and Current (Green) is on the right
+    df_melted['Period'] = pd.Categorical(
+        df_melted['Period'], 
+        categories=['Previous_Month_of_Stock', 'Current_Month_of_Stock'], 
+        ordered=True
+    )
     
     fig_comp = px.bar(
         df_melted.sort_values(['Hospital', 'Period']), 
         x='Hospital', y='Mo', color='Period', barmode='group',
-        color_discrete_map={'Current_Months_of_Stock': '#00CC96', 'Prev_Months_of_Stock': '#636EFA'}
+        color_discrete_map={
+            'Current_Month_of_Stock': '#00CC96', # Green
+            'Previous_Month_of_Stock': '#636EFA'  # Purple
+        }
     )
+    
     fig_comp.update_layout(
         dragmode=False, height=500, xaxis_fixedrange=True, yaxis_fixedrange=True,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         xaxis={'categoryorder':'total descending'}
     )
-    st.plotly_chart(fig_comp, use_container_width=True, config={'displayModeBar': False})
-
-    st.divider()
-
-    # --- ROW 3: Watch List Graph (Using Column EJ) ---
-    st.markdown('### Watch List: <span style="color:#FFFF99">**Medicine Group**</span> Median Month of Stock', unsafe_allow_html=True)
     
-    fig_watch = px.bar(
-        df_filtered.sort_values('Watch_List_MoS', ascending=False), 
-        x='Hospital', y='Watch_List_MoS', 
-        color='Watch_List_MoS', color_continuous_scale='Plasma',
-        labels={'Watch_List_MoS': 'Median MoS'}
-    )
-    fig_watch.update_layout(dragmode=False, height=450, xaxis_fixedrange=True, yaxis_fixedrange=True)
-    st.plotly_chart(fig_watch, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig_comp, use_container_width=True, config={'displayModeBar': False})
 
     st.divider()
 
