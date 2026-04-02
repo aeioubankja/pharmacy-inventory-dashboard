@@ -151,6 +151,20 @@ if show_analytics:
 
     st.divider()
 
+# --- ROW 3: Watch List Graph (Using Column EJ) ---
+    st.markdown('### Watch List: <span style="color:#FFFF99">**Medicine Group**</span> Median Month of Stock', unsafe_allow_html=True)
+    
+    fig_watch = px.bar(
+        df_filtered.sort_values('Watch_List_MoS', ascending=False), 
+        x='Hospital', y='Watch_List_MoS', 
+        color='Watch_List_MoS', color_continuous_scale='Plasma',
+        labels={'Watch_List_MoS': 'Median MoS'}
+    )
+    fig_watch.update_layout(dragmode=False, height=450, xaxis_fixedrange=True, yaxis_fixedrange=True)
+    st.plotly_chart(fig_watch, use_container_width=True, config={'displayModeBar': False})
+
+    st.divider()
+
     # --- ROW 4: Heatmap and Alerts ---
     r4c1, r4c2 = st.columns(2)
     with r4c1:
