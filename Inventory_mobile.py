@@ -123,7 +123,7 @@ if show_analytics:
     fig_comp = px.bar(
         df_melted.sort_values(['Hospital', 'Period']), 
         x='Hospital', y='Mo', color='Period', barmode='group',
-        color_discrete_map={'Months_of_Stock': '#00CC96', 'Prev_Months_of_Stock': '#636EFA'}
+        color_discrete_map={'Current_Months_of_Stock': '#00CC96', 'Prev_Months_of_Stock': '#636EFA'}
     )
     fig_comp.update_layout(
         dragmode=False, height=500, xaxis_fixedrange=True, yaxis_fixedrange=True,
