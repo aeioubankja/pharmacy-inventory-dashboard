@@ -54,22 +54,22 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 url = "https://docs.google.com/spreadsheets/d/1ZPIcCKwGu_7LF0Bka63j9s_E78fEM6A5hnzkVW2N9ag/edit#gid=883636641"
 df_raw = conn.read(spreadsheet=url, ttl=0)
 
-# Updated Slicing Logic:
-# Column P (Alias Hospital Name) is idx 15
-# Current Data: Col E:G (idx 4, 5, 6)
-# Port Status: Col I (idx 8)
-# Previous Data: Col M:O (idx 12, 13, 14)
+# Main Data Slicing (Col P for Hospital Name)
 df = df_raw.iloc[:, [15, 4, 5, 6, 8, 12, 13, 14]].copy()
 df.columns = [
     "Hospital", "Inventory_Value", "Avg_Usage", "Remaining_Budget", 
     "Port_Status", "Prev_Inventory", "Prev_Avg_Usage", "Prev_Budget"
 ]
 
+# Watch List Extraction (Q:BE is Stock, BF:CT is Use)
+stock_cols = df_raw.iloc[:, 16:61] # Q:BE
+use_cols = df_raw.iloc[:, 61:106]   # BF:CT
+item_names = [col.split('.')[0] for col in stock_cols.columns]
+
 # Numeric Cleaning
 numeric_cols = ["Inventory_Value", "Avg_Usage", "Remaining_Budget", "Prev_Inventory", "Prev_Avg_Usage", "Prev_Budget"]
 for col in numeric_cols:
-    df[col] = df[col].astype(str).str.replace(',', '')
-    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
 
 # Calculate Months of Stock
 df['Months_of_Stock'] = (df['Inventory_Value'] / df['Avg_Usage']).replace([float('inf'), -float('inf')], 0).fillna(0).round(2)
@@ -81,10 +81,18 @@ st.sidebar.header("Strategic Navigation")
 show_analytics = st.sidebar.checkbox("Show Analytics Charts", value=True)
 show_table = st.sidebar.checkbox("Show Detailed Table", value=True)
 st.sidebar.divider()
-st.sidebar.subheader("Select Institutes")
 
+# Watch List Dropdown
+st.sidebar.subheader("Watch List Filter")
+selected_item_idx = st.sidebar.selectbox(
+    "Select Medicine to Watch", 
+    range(len(item_names)), 
+    format_func=lambda x: item_names[x]
+)
+
+st.sidebar.divider()
+st.sidebar.subheader("Select Institutes")
 selected_hospitals = []
-# Sort by the new Hospital alias names
 for hosp in sorted(df['Hospital'].unique()):
     if st.sidebar.checkbox(hosp, value=True, key=f"f_{hosp}"):
         selected_hospitals.append(hosp)
@@ -106,68 +114,65 @@ if show_analytics:
     r1c1, r1c2 = st.columns(2)
     
     with r1c1:
-        # Styled Header for Current
         st.markdown('### <span style="color:#FFFF99">**Current**</span> Month of Stock', unsafe_allow_html=True)
         fig1 = px.bar(
             df_filtered.sort_values('Months_of_Stock'), 
-            x='Months_of_Stock', 
-            y='Hospital', 
-            orientation='h', 
-            color='Months_of_Stock', 
-            range_color=[0, 3], 
-            color_continuous_scale=['#FF4B4B', '#00CC96'],
-            labels={'Months_of_Stock': 'Mo'}
+            x='Months_of_Stock', y='Hospital', orientation='h', 
+            color='Months_of_Stock', range_color=[0, 3], 
+            color_continuous_scale=['#FF4B4B', '#00CC96']
         )
-        fig1.update_layout(dragmode=False, margin=dict(l=0,r=0,t=10,b=0), height=450)
+        # Mobile optimization: fixrange=True prevents accidental zooming
+        fig1.update_layout(dragmode=False, margin=dict(l=0,r=0,t=10,b=0), height=450, xaxis_fixedrange=True, yaxis_fixedrange=True)
         st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': False})
 
     with r1c2:
-        # Styled Header for Previous
         st.markdown('### <span style="color:#FFFF99">**Previous**</span> Month of Stock', unsafe_allow_html=True)
         fig2 = px.bar(
             df_filtered.sort_values('Prev_Months_of_Stock'), 
-            x='Prev_Months_of_Stock', 
-            y='Hospital', 
-            orientation='h', 
-            color='Prev_Months_of_Stock', 
-            range_color=[0, 3], 
-            color_continuous_scale=['#FF4B4B', '#00CC96'],
-            labels={'Prev_Months_of_Stock': 'Mo'}
+            x='Prev_Months_of_Stock', y='Hospital', orientation='h', 
+            color='Prev_Months_of_Stock', range_color=[0, 3], 
+            color_continuous_scale=['#FF4B4B', '#00CC96']
         )
-        fig2.update_layout(dragmode=False, margin=dict(l=0,r=0,t=10,b=0), height=450)
+        fig2.update_layout(dragmode=False, margin=dict(l=0,r=0,t=10,b=0), height=450, xaxis_fixedrange=True, yaxis_fixedrange=True)
         st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': False})
 
     st.divider()
 
-    # --- ROW 2: Vertical Comparison Chart ---
-    st.markdown('### Comparison: <span style="color:#FFFF99">**Current**</span> vs <span style="color:#FFFF99">**Previous**</span> Month of Stock', unsafe_allow_html=True)
+    # --- ROW 2: Comparison (Previous on Left, Current on Right) ---
+    st.markdown('### Comparison: <span style="color:#FFFF99">**Previous**</span> vs <span style="color:#FFFF99">**Current**</span> Month of Stock', unsafe_allow_html=True)
     
     df_compare = df_filtered[['Hospital', 'Months_of_Stock', 'Prev_Months_of_Stock']].copy()
-    df_compare = df_compare.rename(columns={
-        'Months_of_Stock': 'Current Month',
-        'Prev_Months_of_Stock': 'Previous Month'
-    })
+    # Map to long format and control order for Left-to-Right reading
     df_melted = df_compare.melt(id_vars='Hospital', var_name='Period', value_name='Mo')
+    df_melted['Period'] = pd.Categorical(df_melted['Period'], categories=['Prev_Months_of_Stock', 'Months_of_Stock'], ordered=True)
 
     fig_comp = px.bar(
-        df_melted,
-        x='Hospital',
-        y='Mo',
-        color='Period',
-        barmode='group',
-        color_discrete_map={
-            'Current Month': '#00CC96',
-            'Previous Month': '#636EFA'
-        },
-        height=500
+        df_melted, x='Hospital', y='Mo', color='Period', barmode='group',
+        color_discrete_map={'Months_of_Stock': '#00CC96', 'Prev_Months_of_Stock': '#636EFA'}
     )
-    
     fig_comp.update_layout(
-        dragmode=False,
+        dragmode=False, height=500, xaxis_fixedrange=True, yaxis_fixedrange=True,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         xaxis={'categoryorder':'total descending'}
     )
     st.plotly_chart(fig_comp, use_container_width=True, config={'displayModeBar': False})
+
+    st.divider()
+
+    # --- NEW INSERT: Watch List Medicine Graph ---
+    st.markdown(f'### Watch List: <span style="color:#FFFF99">**{item_names[selected_item_idx]}**</span> Month of Stock', unsafe_allow_html=True)
+    
+    # Calculate MoS for the selected medicine
+    item_s = pd.to_numeric(stock_cols.iloc[:, selected_item_idx], errors='coerce').fillna(0)
+    item_u = pd.to_numeric(use_cols.iloc[:, selected_item_idx], errors='coerce').fillna(0)
+    item_mos = (item_s / item_u).replace([float('inf')], 0).fillna(0).round(2)
+    
+    df_watch = pd.DataFrame({'Hospital': df_raw.iloc[:, 15], 'MoS': item_mos})
+    df_watch = df_watch[df_watch['Hospital'].isin(selected_hospitals)]
+    
+    fig_watch = px.bar(df_watch, x='Hospital', y='MoS', color='MoS', color_continuous_scale='Viridis')
+    fig_watch.update_layout(dragmode=False, height=450, xaxis_fixedrange=True, yaxis_fixedrange=True)
+    st.plotly_chart(fig_watch, use_container_width=True, config={'displayModeBar': False})
 
     st.divider()
 
@@ -187,7 +192,7 @@ if show_analytics:
             colorscale=[[0, '#FF4B4B'], [0.8, '#FFFF00'], [1, '#00CC96']], 
             zmin=0, zmax=7
         ))
-        fig3.update_layout(dragmode=False, height=350, xaxis={'showticklabels':False}, yaxis={'showticklabels':False})
+        fig3.update_layout(dragmode=False, height=350, xaxis_fixedrange=True, yaxis_fixedrange=True, xaxis={'showticklabels':False}, yaxis={'showticklabels':False})
         st.plotly_chart(fig3, use_container_width=True, config={'displayModeBar': False})
         
     with r3c2:
