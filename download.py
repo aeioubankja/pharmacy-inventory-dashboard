@@ -5,81 +5,89 @@ import datetime
 
 st.set_page_config(page_title="Inventory Export Tool", layout="wide")
 
-# 1. Load Template (Now strictly .xlsx)
+# Helper function to convert Excel Column Letters (FG, AP) to Index Numbers
+def excel_col_to_num(col_str):
+    exp = 0
+    num = 0
+    for char in reversed(col_str.upper()):
+        num += (ord(char) - ord('A') + 1) * (26 ** exp)
+        exp += 1
+    return num - 1
+
+# 1. Load Template
 @st.cache_data
 def load_template():
-    # 'engine' parameter ensures we use openpyxl
     return pd.read_excel("index.xlsx", engine='openpyxl')
 
 # 2. Data Connection
 conn = st.connection("gsheets", type=GSheetsConnection)
 url = "https://docs.google.com/spreadsheets/d/1ZPIcCKwGu_7LF0Bka63j9s_E78fEM6A5hnzkVW2N9ag/edit#gid=883636641"
+# We read the raw data
 df_gsheet = conn.read(spreadsheet=url, ttl=0)
 
 st.title("📦 Hospital Inventory Export")
 
+# 3. Hospital Selection (Column P is index 15)
 hospitals = sorted(df_gsheet.iloc[:, 15].dropna().unique())
 selected_hosp = st.selectbox("Select Hospital for Export", hospitals)
 
 if selected_hosp:
+    # Get the data row for the selected hospital
     hosp_row = df_gsheet[df_gsheet.iloc[:, 15] == selected_hosp].iloc[0]
 
     if st.button(f"Generate CSV for {selected_hosp}"):
-        # Load the original .xlsx structure
         template = load_template().copy()
 
         def process_row(row):
-            # Mapping based on your screenshot:
-            # Column C (index 2) is the mark for Balance (e.g., 'FG')
-            # Column D (index 3) is the mark for Usage (e.g., 'GV')
-            gsheet_col_balance = str(row.iloc[2]).strip() if pd.notnull(row.iloc[2]) else ""
-            gsheet_col_usage = str(row.iloc[3]).strip() if pd.notnull(row.iloc[3]) else ""
+            # Column C/D in template contains the LETTERS (e.g., 'FG', 'GV')
+            col_letter_balance = str(row.iloc[2]).strip().upper() if pd.notnull(row.iloc[2]) else ""
+            col_letter_usage = str(row.iloc[3]).strip().upper() if pd.notnull(row.iloc[3]) else ""
 
             balance_val = ""
             usage_val = ""
             status = ""
             leadtime = ""
 
-            # Check if marks exist in Google Sheet columns
-            is_marked_row = False
-            
-            if gsheet_col_balance in df_gsheet.columns and gsheet_col_balance != "":
-                balance_val = hosp_row[gsheet_col_balance]
-                is_marked_row = True
-            
-            if gsheet_col_usage in df_gsheet.columns and gsheet_col_usage != "":
-                usage_val = hosp_row[gsheet_col_usage]
-                is_marked_row = True
+            is_marked = False
 
-            # --- Status & Leadtime Logic ---
-            try:
-                # Convert to number to check if usage is 0
-                numeric_usage = float(str(usage_val).replace(',', '')) if usage_val != "" else 0
-            except:
-                numeric_usage = 0
+            # Convert 'FG' to index and pull data
+            if col_letter_balance and col_letter_balance.isalpha():
+                idx_bal = excel_col_to_num(col_letter_balance)
+                if idx_bal < len(hosp_row):
+                    balance_val = hosp_row.iloc[idx_bal]
+                    is_marked = True
+            
+            if col_letter_usage and col_letter_usage.isalpha():
+                idx_use = excel_col_to_num(col_letter_usage)
+                if idx_use < len(hosp_row):
+                    usage_val = hosp_row.iloc[idx_use]
+                    is_marked = True
 
-            if is_marked_row:
-                leadtime = 21 # Always 21 for marked rows
-                if numeric_usage > 0:
-                    status = 1
-                else:
+            # --- Logic for Status and Leadtime ---
+            if is_marked:
+                leadtime = 21
+                try:
+                    # Clean and check numeric usage
+                    val_str = str(usage_val).replace(',', '').strip()
+                    numeric_usage = float(val_str) if val_str not in ["", "None", "nan"] else 0
+                    status = 1 if numeric_usage > 0 else 2
+                except:
                     status = 2
             else:
-                # For rows without a mark, keep everything blank
-                balance_val = ""
-                usage_val = ""
-                status = ""
-                leadtime = ""
+                # Keep unmarked rows empty
+                balance_val = usage_val = status = leadtime = ""
 
             return pd.Series([balance_val, usage_val, status, leadtime])
 
-        # Overwrite the template columns with calculated data
+        # Fill the new columns
         template[['current_balance', 'monthly_usage_rate', 'status', 'leadtime']] = template.apply(process_row, axis=1)
 
-        # Convert the modified dataframe to CSV for download
-        csv_data = template.to_csv(index=False).encode('utf_8_sig')
+        # Drop the original 'Mark' columns (Column C & D) so the final CSV is clean
+        final_df = template.drop(template.columns[[2, 3]], axis=1)
 
-        st.success(f"Successfully processed {selected_hosp}")
+        csv_data = final_df.to_csv(index=False).encode('utf_8_sig')
+
+        st.success(f"CSV generated for {selected_hosp}")
         st.download_button(
             label="💾 Download CSV",
             data=csv_data,
