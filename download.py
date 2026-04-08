@@ -3,94 +3,83 @@ import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 import datetime
 
-st.set_page_config(page_title="Inventory Export Tool", layout="wide")
-
-# Helper function to convert Excel Column Letters (FG, AP) to Index Numbers
+# Helper to convert Excel letters (A, B, C...) to 0-based index
 def excel_col_to_num(col_str):
-    exp = 0
     num = 0
-    for char in reversed(col_str.upper()):
-        num += (ord(char) - ord('A') + 1) * (26 ** exp)
-        exp += 1
-    return num - 1
+    for char in str(col_str).upper().strip():
+        if 'A' <= char <= 'Z':
+            num = num * 26 + (ord(char) - ord('A') + 1)
+    return num - 1 if num > 0 else -1
+
+st.title("📦 Hospital Inventory Export")
 
 # 1. Load Template
 @st.cache_data
 def load_template():
-    return pd.read_excel("index.xlsx", engine='openpyxl')
+    df = pd.read_excel("index.xlsx", engine='openpyxl')
+    # Force ensure these columns exist in the dataframe structure
+    required_cols = ['current_balance', 'monthly_usage_rate', 'status', 'leadtime']
+    for col in required_cols:
+        if col not in df.columns:
+            df[col] = ""
+    return df
 
-# 2. Data Connection
+# 2. Connection
 conn = st.connection("gsheets", type=GSheetsConnection)
 url = "https://docs.google.com/spreadsheets/d/1ZPIcCKwGu_7LF0Bka63j9s_E78fEM6A5hnzkVW2N9ag/edit#gid=883636641"
-# We read the raw data
-df_gsheet = conn.read(spreadsheet=url, ttl=0)
+# We read with header=None first to accurately count columns by letter
+df_gsheet = conn.read(spreadsheet=url, ttl=0, header=None)
 
-st.title("📦 Hospital Inventory Export")
-
-# 3. Hospital Selection (Column P is index 15)
-hospitals = sorted(df_gsheet.iloc[:, 15].dropna().unique())
-selected_hosp = st.selectbox("Select Hospital for Export", hospitals)
+hospitals = sorted(df_gsheet.iloc[1:, 15].dropna().unique()) # Skip header row for list
+selected_hosp = st.selectbox("Select Hospital", hospitals)
 
 if selected_hosp:
-    # Get the data row for the selected hospital
+    # Find the specific row for the hospital
     hosp_row = df_gsheet[df_gsheet.iloc[:, 15] == selected_hosp].iloc[0]
 
-    if st.button(f"Generate CSV for {selected_hosp}"):
+    if st.button(f"Generate File"):
         template = load_template().copy()
 
         def process_row(row):
-            # Column C/D in template contains the LETTERS (e.g., 'FG', 'GV')
-            col_letter_balance = str(row.iloc[2]).strip().upper() if pd.notnull(row.iloc[2]) else ""
-            col_letter_usage = str(row.iloc[3]).strip().upper() if pd.notnull(row.iloc[3]) else ""
+            # Column C (index 2) = Balance Mark, Column D (index 3) = Usage Mark
+            mark_bal = str(row.iloc[2]).strip() if pd.notnull(row.iloc[2]) else ""
+            mark_use = str(row.iloc[3]).strip() if pd.notnull(row.iloc[3]) else ""
 
-            balance_val = ""
-            usage_val = ""
+            bal_val = ""
+            use_val = ""
             status = ""
             leadtime = ""
 
-            is_marked = False
-
-            # Convert 'FG' to index and pull data
-            if col_letter_balance and col_letter_balance.isalpha():
-                idx_bal = excel_col_to_num(col_letter_balance)
-                if idx_bal < len(hosp_row):
-                    balance_val = hosp_row.iloc[idx_bal]
-                    is_marked = True
+            # Mapping Balance
+            idx_bal = excel_col_to_num(mark_bal)
+            if idx_bal >= 0 and idx_bal < len(hosp_row):
+                bal_val = hosp_row.iloc[idx_bal]
             
-            if col_letter_usage and col_letter_usage.isalpha():
-                idx_use = excel_col_to_num(col_letter_usage)
-                if idx_use < len(hosp_row):
-                    usage_val = hosp_row.iloc[idx_use]
-                    is_marked = True
+            # Mapping Usage
+            idx_use = excel_col_to_num(mark_use)
+            if idx_use >= 0 and idx_use < len(hosp_row):
+                use_val = hosp_row.iloc[idx_use]
 
-            # --- Logic for Status and Leadtime ---
-            if is_marked:
+            # Logic for Status/Leadtime
+            if mark_bal != "" or mark_use != "":
                 leadtime = 21
                 try:
-                    # Clean and check numeric usage
-                    val_str = str(usage_val).replace(',', '').strip()
-                    numeric_usage = float(val_str) if val_str not in ["", "None", "nan"] else 0
-                    status = 1 if numeric_usage > 0 else 2
+                    num_use = float(str(use_val).replace(',', '')) if use_val not in ["", None] else 0
+                    status = 1 if num_use > 0 else 2
                 except:
                     status = 2
-            else:
-                # Keep unmarked rows empty
-                balance_val = usage_val = status = leadtime = ""
+            
+            return pd.Series([bal_val, use_val, status, leadtime])
 
-            return pd.Series([balance_val, usage_val, status, leadtime])
-
-        # Fill the new columns
+        # Apply to the correct column names
         template[['current_balance', 'monthly_usage_rate', 'status', 'leadtime']] = template.apply(process_row, axis=1)
 
-        # Drop the original 'Mark' columns (Column C & D) so the final CSV is clean
-        final_df = template.drop(template.columns[[2, 3]], axis=1)
+        # 3. Clean up: Drop the 'Mark' columns (C and D) so they don't appear in CSV
+        # We keep dr_code, dr_name, and the 4 new data columns
+        cols_to_keep = ['dr_code', 'dr_name', 'current_balance', 'monthly_usage_rate', 'status', 'leadtime']
+        final_df = template[cols_to_keep]
 
-        csv_data = final_df.to_csv(index=False).encode('utf_8_sig')
-
-        st.success(f"CSV generated for {selected_hosp}")
-        st.download_button(
-            label="💾 Download CSV",
-            data=csv_data,
-            file_name=f"Inventory_{selected_hosp}_{datetime.date.today()}.csv",
-            mime="text/csv"
-        )
+        csv = final_df.to_csv(index=False).encode('utf_8_sig')
+        
+        st.success("Process Complete")
+        st.download_button("Download CSV", csv, f"{selected_hosp}.csv", "text/csv")
