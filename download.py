@@ -1,18 +1,15 @@
 import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
-import datetime # <--- Added this to fix your error
+import datetime
 
 st.set_page_config(page_title="Inventory Export Tool", layout="wide")
 
-# 1. Load Template (Keep index.xlsx in the same folder as this script)
+# 1. Load Template (Now strictly .xlsx)
 @st.cache_data
 def load_template():
-    # Reading the CSV version you uploaded or index.xlsx
-    try:
-        return pd.read_csv("index.xlsx") 
-    except:
-        return pd.read_excel("index.xlsx")
+    # 'engine' parameter ensures we use openpyxl
+    return pd.read_excel("index.xlsx", engine='openpyxl')
 
 # 2. Data Connection
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -21,64 +18,70 @@ df_gsheet = conn.read(spreadsheet=url, ttl=0)
 
 st.title("📦 Hospital Inventory Export")
 
-# 3. Hospital Selection
 hospitals = sorted(df_gsheet.iloc[:, 15].dropna().unique())
 selected_hosp = st.selectbox("Select Hospital for Export", hospitals)
 
 if selected_hosp:
-    # Get the specific row for this hospital from Google Sheets
     hosp_row = df_gsheet[df_gsheet.iloc[:, 15] == selected_hosp].iloc[0]
 
     if st.button(f"Generate CSV for {selected_hosp}"):
-        # Load a fresh copy of the index
+        # Load the original .xlsx structure
         template = load_template().copy()
 
-        # 4. Processing the logic for each row in index.xlsx
         def process_row(row):
-            # Check if columns C and D in the template contain GSheet coordinates (e.g., 'FG', 'GV')
-            # Using the format from your uploaded index file: column 2 (C) and 3 (D)
+            # Mapping based on your screenshot:
+            # Column C (index 2) is the mark for Balance (e.g., 'FG')
+            # Column D (index 3) is the mark for Usage (e.g., 'GV')
             gsheet_col_balance = str(row.iloc[2]).strip() if pd.notnull(row.iloc[2]) else ""
             gsheet_col_usage = str(row.iloc[3]).strip() if pd.notnull(row.iloc[3]) else ""
 
-            # Initialize values
             balance_val = ""
             usage_val = ""
             status = ""
             leadtime = ""
 
-            # If there is a mapping coordinate, fetch the value from GSheet
-            if gsheet_col_balance and gsheet_col_balance in df_gsheet.columns:
-                balance_val = hosp_row[gsheet_col_balance]
-                leadtime = 21 # Set leadtime if this is a "marked" row
+            # Check if marks exist in Google Sheet columns
+            is_marked_row = False
             
-            if gsheet_col_usage and gsheet_col_usage in df_gsheet.columns:
+            if gsheet_col_balance in df_gsheet.columns and gsheet_col_balance != "":
+                balance_val = hosp_row[gsheet_col_balance]
+                is_marked_row = True
+            
+            if gsheet_col_usage in df_gsheet.columns and gsheet_col_usage != "":
                 usage_val = hosp_row[gsheet_col_usage]
+                is_marked_row = True
 
-            # --- Status Logic ---
-            # 1: Usage is not blank and not 0
-            # 2: Marked row but usage is 0/blank
+            # --- Status & Leadtime Logic ---
             try:
+                # Convert to number to check if usage is 0
                 numeric_usage = float(str(usage_val).replace(',', '')) if usage_val != "" else 0
             except:
                 numeric_usage = 0
 
-            if numeric_usage > 0:
-                status = 1
-            elif gsheet_col_balance != "": # This row was marked for data
-                status = 2
+            if is_marked_row:
+                leadtime = 21 # Always 21 for marked rows
+                if numeric_usage > 0:
+                    status = 1
+                else:
+                    status = 2
+            else:
+                # For rows without a mark, keep everything blank
+                balance_val = ""
+                usage_val = ""
+                status = ""
+                leadtime = ""
 
             return pd.Series([balance_val, usage_val, status, leadtime])
 
-        # Apply the logic to update the template columns
-        # current_balance, monthly_usage_rate, status, leadtime
+        # Overwrite the template columns with calculated data
         template[['current_balance', 'monthly_usage_rate', 'status', 'leadtime']] = template.apply(process_row, axis=1)
 
-        # 5. Export to CSV (UTF-8-SIG for Thai characters)
+        # Convert the modified dataframe to CSV for download
         csv_data = template.to_csv(index=False).encode('utf_8_sig')
 
-        st.success(f"Successfully generated data for {selected_hosp}")
+        st.success(f"Successfully processed {selected_hosp}")
         st.download_button(
-            label="💾 Download CSV File",
+            label="💾 Download CSV",
             data=csv_data,
             file_name=f"Inventory_{selected_hosp}_{datetime.date.today()}.csv",
             mime="text/csv"
