@@ -41,36 +41,51 @@ if selected_hosp:
         template = load_template().copy()
 
         def process_row(row):
-            # Column C (index 2) = Balance Mark, Column D (index 3) = Usage Mark
-            mark_bal = str(row.iloc[2]).strip() if pd.notnull(row.iloc[2]) else ""
-            mark_use = str(row.iloc[3]).strip() if pd.notnull(row.iloc[3]) else ""
+            # 1. Get the column letters from index.xlsx
+            mark_bal = str(row.iloc[2]).strip().upper() if pd.notnull(row.iloc[2]) else ""
+            mark_use = str(row.iloc[3]).strip().upper() if pd.notnull(row.iloc[3]) else ""
 
+            # 2. Extract values based on letters
             bal_val = ""
             use_val = ""
-            status = ""
-            leadtime = ""
-
-            # Mapping Balance
-            idx_bal = excel_col_to_num(mark_bal)
-            if idx_bal >= 0 and idx_bal < len(hosp_row):
-                bal_val = hosp_row.iloc[idx_bal]
             
-            # Mapping Usage
-            idx_use = excel_col_to_num(mark_use)
-            if idx_use >= 0 and idx_use < len(hosp_row):
-                use_val = hosp_row.iloc[idx_use]
+            # Map Balance
+            if mark_bal.isalpha():
+                idx = excel_col_to_num(mark_bal)
+                if 0 <= idx < len(hosp_row):
+                    bal_val = hosp_row.iloc[idx]
+            
+            # Map Usage
+            if mark_use.isalpha():
+                idx = excel_col_to_num(mark_use)
+                if 0 <= idx < len(hosp_row):
+                    use_val = hosp_row.iloc[idx]
 
-            # Logic for Status/Leadtime
-            if mark_bal != "" or mark_use != "":
+            # 3. Apply your Specific Logic
+            # Convert usage to float, handle errors/blanks
+            try:
+                # Remove commas, handle "None", empty strings, or NaN
+                val_str = str(use_val).replace(',', '').strip()
+                usage_float = float(val_str) if val_str not in ["", "None", "nan"] else None
+            except:
+                usage_float = None
+
+            # Logic Rules:
+            if usage_float is None:
+                # If usage is blank (None)
+                status = ""
+                leadtime = ""
+            elif usage_float > 0:
+                # If usage > 0
+                status = 1
                 leadtime = 21
-                try:
-                    num_use = float(str(use_val).replace(',', '')) if use_val not in ["", None] else 0
-                    status = 1 if num_use > 0 else 2
-                except:
-                    status = 2
-            
-            return pd.Series([bal_val, use_val, status, leadtime])
+            else:
+                # If usage = 0
+                status = 2
+                leadtime = ""
 
+            return pd.Series([bal_val, usage_float if usage_float is not None else "", status, leadtime])
+        
         # Apply to the correct column names
         template[['current_balance', 'monthly_usage_rate', 'status', 'leadtime']] = template.apply(process_row, axis=1)
 
