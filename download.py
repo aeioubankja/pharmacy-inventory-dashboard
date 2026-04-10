@@ -78,7 +78,7 @@ if selected_hosp:
             elif usage_float > 0:
                 # If usage > 0
                 status = 1
-                leadtime = 21
+                leadtime = 0
             else:
                 # If usage = 0
                 status = 2
